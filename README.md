@@ -37,4 +37,10 @@ Using ZMQ to coordinate the different entities. Diagram to come...
 
 Basically, there is one central controller, which waits until enough listeners join and tells them to launch the configured number of processes. It then waits for the processes to spin up and join and once a sufficient number of them do, publishes another request to start websocket connections with the desired configuration. Finally, the sink part of the controller waits for results and outputs aggregated statistics over all connections.
 
+Dependencies
+------------
 
+- WebsocketPP
+- ZMQ c++
+- zmq helpers (https://github.com/imatix/zguide/blob/master/examples/C%2B%2B/zhelpers.hpp) - plan to remove this dependency
+- Boost Process for listener (http://www.highscore.de/boost/process/) not part of official Boost set of libs..
