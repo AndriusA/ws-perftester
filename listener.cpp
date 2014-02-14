@@ -1,8 +1,3 @@
-//
-//  Synchronized subscriber in C++
-//
-// Olivier Chamoux <olivier.chamoux@fr.thalesgroup.com>
-
 #include "zhelpers.hpp"
 
 #include <boost/filesystem/operations.hpp>
