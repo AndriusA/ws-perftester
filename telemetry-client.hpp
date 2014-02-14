@@ -68,6 +68,7 @@ public:
             return;
         }
         m_hdl = con->get_handle();
+        m_con_start = std::chrono::high_resolution_clock::now();
         m_client.connect(con);
         asio_thread.reset(new thread_type(&client::run, &m_client));
         telemetry_thread.reset(new thread_type(&telemetry_client::telemetry_loop,this));        
@@ -82,7 +83,9 @@ public:
     void on_open(websocketpp::connection_hdl hdl) {
         m_client.get_alog().write(websocketpp::log::alevel::app,
             "Connection opened, starting telemetry!");
-
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::microseconds elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - m_con_start);
+        m_setupTime = elapsed.count()/1000.0;
         scoped_lock guard(m_lock);
         m_open = true;
     }
@@ -195,7 +198,8 @@ public:
         ss << min(m_stats) << " ";
         ss << max(m_stats) << " ";
         ss << mean(m_stats) << " ";
-        ss << variance(m_stats);
+        ss << variance(m_stats) << " ";
+        ss << m_setupTime;
         return ss.str();
     }
 private:
@@ -217,7 +221,9 @@ private:
 
     accumulator_set<double, stats<tag::count, tag::min, tag::max, tag::mean, tag::variance> > m_stats;
 
-    std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_start, m_con_start;
+    double m_setupTime;
+
 
     thread_ptr asio_thread, telemetry_thread;
 };

@@ -1,5 +1,12 @@
 #include "zhelpers.hpp"
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/mean.hpp>
+#include <boost/accumulators/statistics/variance.hpp>
+
+using namespace boost::accumulators;
+
 class config {
 public:
     config () {
@@ -9,7 +16,7 @@ public:
         send_messages = true;           // Send messages once connection is established or only connect
         randomized_interval = true;     // Send messages at a randomized interval or exactly every t seconds
         interval = 20;                  // Mean interval
-        messages = 10;                   
+        messages = 1;                   
         message_length = 256;           // Mesasge payload length in bytes (random payload)
     }
     int machines, processes, instances, interval, messages, message_length;
@@ -34,10 +41,10 @@ int main () {
     zmq::socket_t receiver (context, ZMQ_PULL);
     receiver.bind("tcp://*:5558");
 
-    int iterations = 3;
+    int iterations = 1;
     config conf[iterations];
     for (int i = 0; i < iterations; ++i) {
-        conf[i].processes = (i+1)*10;
+        conf[i].processes = (i+1)*5;
     }
 
     for (int iteration = 0; iteration < iterations; ++iteration) {
@@ -90,6 +97,7 @@ int main () {
         double variancesum = 0.0;
         int totalcount = 0;
         int samples = 0;
+        accumulator_set<double, stats<tag::mean, tag::variance> > setup_stats;
         while (clientsFinished + clientsDied < conf[iteration].machines*conf[iteration].processes) {
             std::string status = s_recv(receiver);
             if (status == "Finished") {
@@ -106,12 +114,14 @@ int main () {
                 s_recv(receiver);
                 std::stringstream ss(stats);
                 int count;
-                double min, max, mean, variance;
+                double min, max, mean, variance, setup;
                 ss >> count;
                 ss >> min;
                 ss >> max;
                 ss >> mean;
                 ss >> variance;
+                ss >> setup;
+                setup_stats(setup);
                 if (count < conf[iteration].messages)
                     connectionsDied++;
                 else if (count > 0) {
@@ -130,6 +140,7 @@ int main () {
         std::cout << "Clients completed " << clientsFinished << ", clients died " << clientsDied << std::endl;
         std::cout << "Connections succeeded " << resultsReceived << std::endl;
         std::cout << "Connections died " << connectionsDied << std::endl;
+        std::cout << "Connection setup latency " << mean(setup_stats) << " variance " << variance(setup_stats) << std::endl;
         double overallMean = meansum/totalcount;
         double overallVariance = variancesum/(totalcount-samples);
         std::cout << "Average message latency " << overallMean << "ms, variance " << overallVariance << std::endl;
