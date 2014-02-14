@@ -48,6 +48,7 @@ int main (int argc, char *argv[])
     zmq::socket_t subscriber (context, ZMQ_SUB);
     subscriber.connect(subscriber_addr.c_str());
     subscriber.setsockopt(ZMQ_SUBSCRIBE, "StartProcesses", strlen("StartProcesses"));
+    subscriber.setsockopt(ZMQ_SUBSCRIBE, "END", strlen("END"));
 
     //  Second, synchronize with publisher
     zmq::socket_t syncclient (context, ZMQ_REQ);
@@ -56,46 +57,49 @@ int main (int argc, char *argv[])
     //  Finally, Sink for results
     zmq::socket_t sink(context, ZMQ_PUSH);
     sink.connect(sink_addr.c_str());
-
-    // std::cout << listenerName << " Sending synchronization request" << std::endl;
-    s_send (syncclient, "");
-    s_recv (syncclient);
-
-    std::string request = s_recv(subscriber);
     
-    // std::cout << listenerName << " Received request " << request << std::endl;
-    if (request == "StartProcesses") {
-        int processes;
-        std::stringstream req(s_recv(subscriber));
-        req >> processes;
-        std::vector<bp::child> children;
+    while (1) {
+        std::cout << listenerName << " Sending synchronization request" << std::endl;
+        s_send (syncclient, "");
+        s_recv (syncclient);
 
-        // Start up the required number of processes
-        for (int i = 0; i < processes; i++) {
-            std::string cname = listenerName + "-" + std::to_string(i);
-            bp::child c = start_child(cname, address);
-            children.push_back(c);    
+        std::string processingRequest = s_recv(subscriber);
+        std::cout << listenerName << " processing request " <<  processingRequest << std::endl;
+        if (processingRequest == "END") {
+            break;
+        } else if (processingRequest == "StartProcesses") {
+            int processes;
+            std::stringstream req(s_recv(subscriber));
+            s_recv(subscriber);
+            req >> processes;
+            std::vector<bp::child> children;
+            std::cout << listenerName << "Launching " << processes << " processes" << std::endl;
+            // Start up the required number of processes
+            for (int i = 0; i < processes; i++) {
+                std::string cname = listenerName + "-" + std::to_string(i);
+                bp::child c = start_child(cname, address);
+                children.push_back(c);    
+            }
+            
+            // for (int i = 0; i < processes; i++) {
+            //     bp::pistream &is = children[i].get_stdout(); 
+            //     std::string line; 
+            //     while (std::getline(is, line)) 
+            //         std::cout << line << std::endl; 
+            // }
+
+            // Wait for all of them to finish
+            for (int i = 0; i < processes; i++) {
+                bp::status s = children[i].wait();
+                int status = s.exited() ? s.exit_status() : EXIT_FAILURE;
+                // std::cout << listenerName << " Child status " << status << std::endl;
+                std::string cname = listenerName + "-" + std::to_string(i);
+                s_sendmore(sink, "Finished");
+                s_sendmore(sink, cname);
+                s_sendmore(sink, std::to_string(status));
+                s_send(sink, "");
+            }
         }
-        
-        // for (int i = 0; i < processes; i++) {
-        //     bp::pistream &is = children[i].get_stdout(); 
-        //     std::string line; 
-        //     while (std::getline(is, line)) 
-        //         std::cout << line << std::endl; 
-        // }
-
-        // Wait for all of them to finish
-        for (int i = 0; i < processes; i++) {
-            bp::status s = children[i].wait();
-            int status = s.exited() ? s.exit_status() : EXIT_FAILURE;
-            // std::cout << listenerName << " Child status " << status << std::endl;
-            std::string cname = listenerName + "-" + std::to_string(i);
-            s_sendmore(sink, "Finished");
-            s_sendmore(sink, cname);
-            s_sendmore(sink, std::to_string(status));
-            s_send(sink, "");
-
-        }        
     }
     
     // std::cout << listenerName << " Running children done" << std::endl;

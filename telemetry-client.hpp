@@ -5,6 +5,7 @@
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/poisson_distribution.hpp>
+#include <boost/random/uniform_int.hpp>
 #include <boost/random/variate_generator.hpp>
 
 #include <boost/accumulators/accumulators.hpp>
@@ -31,7 +32,7 @@ public:
     typedef websocketpp::lib::lock_guard<websocketpp::lib::mutex> scoped_lock;
     typedef websocketpp::lib::shared_ptr<telemetry_client> ptr;
 
-    telemetry_client(int total_messages, bool random_interval, int interval) 
+    telemetry_client(char const * client_id, int total_messages, bool random_interval, int interval, int message_length) 
         : m_open(false)
         , m_done(false)
         , m_finite_messages(true)
@@ -40,6 +41,7 @@ public:
         , m_random_interval(random_interval)
         , m_interval(interval)
         , m_message_pending(false)
+        , m_message_length(message_length)
     {   
         // set up access channels to only log interesting things
         m_client.clear_access_channels(websocketpp::log::alevel::all);
@@ -121,11 +123,15 @@ public:
         boost::poisson_distribution<int> pdist(m_interval);
         rng_type rng(gen, pdist);
 
+        std::uniform_int_distribution<> udist(32, 127);
+        boost::variate_generator< boost::mt19937&, std::uniform_int_distribution<> > payload_rng(gen, udist);
+
         while(!m_finite_messages || m_count < m_total_messages ) {
             if (!m_random_interval)
                 sleep(m_interval);
             else {
                 int sleep_interval = rng();
+                std::cout << "Sleeping for " << sleep_interval << "s" << std::endl;
                 sleep(sleep_interval);
             }
             bool wait = false;
@@ -148,8 +154,12 @@ public:
             }
 
             val.str("");
-            val << "count is " << m_count++;
-            val.str("this is a fixed message");
+            for (int i = 0; i < m_message_length; ++i) {
+                val << static_cast<char> (payload_rng());
+            }
+            // val.str("foo");
+            std::cout << "Will send " << val.str() << std::endl;
+            m_count++;
 
             {
                 // m_client.get_alog().write(websocketpp::log::alevel::app, val.str());
@@ -203,6 +213,7 @@ private:
     bool m_random_interval;
     int m_interval;
     bool m_message_pending;
+    int m_message_length;
 
     accumulator_set<double, stats<tag::count, tag::min, tag::max, tag::mean, tag::variance> > m_stats;
 
