@@ -92,7 +92,8 @@ if env['PLATFORM'].startswith('win'):
    pass
 else:
    env['LIBPATH'] = ['/usr/lib',
-                     '/usr/local/lib'] #, env['BOOST_LIBS']
+                     '/usr/local/lib']
+                     # '/usr/lib/x86_64-linux-gnu/'] #, env['BOOST_LIBS']
 
 # Compiler specific warning flags
 if env['CXX'].startswith('g++'):
@@ -108,9 +109,14 @@ elif env['CXX'].startswith('clang++'):
    # Wsign-conversion
 
 platform_libs = []
+tls_libs = []
+
+tls_build = False
 
 if env['PLATFORM'] == 'posix':
-   platform_libs = ['pthread', 'rt', 'z', 'zmq']
+   platform_libs = ['pthread', 'rt', 'zmq', 'ssl', 'crypto', 'dl', 'z']
+   # tls_libs = ['ssl', 'crypto']
+   tls_build = True
 elif env['PLATFORM'] == 'darwin':
    pass
 elif env['PLATFORM'].startswith('win'):
@@ -175,9 +181,10 @@ Export('env_cpp11')
 Export('platform_libs')
 Export('boostlibs')
 Export('polyfill_libs')
+Export('tls_libs')
 
 ## END OF CONFIG !!
 
 ## TARGETS:
-SConscript('SConscript', variant_dir='.build/', duplicate=0, exports={'MODE':'release'})
+SConscript('SConscript', variant_dir='build/', duplicate=0, exports={'MODE':'release'})
 
