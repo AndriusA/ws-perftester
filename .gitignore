@@ -1,0 +1,5 @@
+build/*
+*sublime*
+*.pem
+utils/*pem
+.sconsign.dblite
