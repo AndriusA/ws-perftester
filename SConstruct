@@ -16,6 +16,9 @@ if os.environ.has_key('LINKFLAGS'):
     #env['LDFLAGS'] = os.environ['LDFLAGS']
     env.Append(LINKFLAGS = os.environ['LINKFLAGS'])
 
+## IMPORTANT: set to correct path to websocketpp
+websocketpp_includes="-I../websocketpp/"
+
 ## Boost
 ##
 ## Note: You need to either set BOOSTROOT to the root of a stock Boost distribution
@@ -160,18 +163,18 @@ else:
 # values then use it for the boost libraries. Otherwise just add them to the
 # regular CPPPATH values.
 if env['CXX'].startswith('g++') or env['CXX'].startswith('clang'):
-	env.Append(CPPFLAGS = '-isystem ' + env['BOOST_INCLUDES'])
+	env.Append(CPPFLAGS = '-isystem ' + env['BOOST_INCLUDES'] + ' ' + websocketpp_includes)
 else:
-	env.Append(CPPPATH = [env['BOOST_INCLUDES']])
+	env.Append(CPPPATH = [env['BOOST_INCLUDES']] + ' ' + websocketpp_includes)
 env.Append(LIBPATH = [env['BOOST_LIBS']])
 
 # if the build system is known to allow the isystem modifier for library include
 # values then use it for the boost libraries. Otherwise just add them to the
 # regular CPPPATH values.
 if env_cpp11['CXX'].startswith('g++') or env_cpp11['CXX'].startswith('clang'):
-	env_cpp11.Append(CPPFLAGS = '-isystem ' + env_cpp11['BOOST_INCLUDES'])
+	env_cpp11.Append(CPPFLAGS = '-isystem ' + env_cpp11['BOOST_INCLUDES'] + ' ' + websocketpp_includes)
 else:
-	env_cpp11.Append(CPPPATH = [env_cpp11['BOOST_INCLUDES']])
+	env_cpp11.Append(CPPPATH = [env_cpp11['BOOST_INCLUDES']] + ' ' + websocketpp_includes)
 env_cpp11.Append(LIBPATH = [env_cpp11['BOOST_LIBS']])
 
 builddir = '.'

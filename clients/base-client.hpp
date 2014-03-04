@@ -21,6 +21,10 @@
 #include <fstream>
 
 using namespace boost::accumulators;
+using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_2;
+using websocketpp::lib::bind;
+using websocketpp::lib::error_code;
 
 /**
  * The telemetry client connects to a WebSocket server and sends a message every
@@ -62,12 +66,10 @@ public:
         std::cout << client_id << "log file " << filename << std::endl;
 
         // Bind the handlers we are using
-        using websocketpp::lib::placeholders::_1;
-        using websocketpp::lib::bind;
         client_endpoint.set_open_handler(bind(&type::on_open,this,::_1));
         client_endpoint.set_close_handler(bind(&type::on_close,this,::_1));
         client_endpoint.set_fail_handler(bind(&type::on_fail,this,::_1));
-        client_endpoint.set_message_handler(bind(&type::on_message,this,::_1,::_2));
+        client_endpoint.set_message_handler(bind(&type::on_message,this, ::_2));
     }
 
     ~base_client() {
@@ -80,7 +82,7 @@ public:
         m_log << "Connect to " << uri;
         m_log.flush();
 
-        websocketpp::lib::error_code ec;
+        error_code ec;
         std::cout << "Get connection" << std::endl;
         connection_ptr con;
         con = client_endpoint.get_connection(uri, ec);
@@ -139,20 +141,34 @@ public:
         m_done = true;
     }
 
-    void on_message(websocketpp::connection_hdl hdl, message_ptr message) {
+    void on_message (message_ptr message) {
         scoped_lock guard(m_lock);
         m_message_pending = false;
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::microseconds elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start);
-        // std::cout << "Message echo received " << message->get_payload() << " in " << elapsed.count() << "microseconds" << std::endl;
+        std::cout << "Message echo received in " << elapsed.count() << "microseconds" << std::endl;
         m_log << "Echo in " << elapsed.count()/1000.0 << "ms" << std::endl;
         m_stats(elapsed.count()/1000.0);
     }
 
-    void telemetry_loop() {
+    virtual error_code send_message (std::string const & msg) {
+        std::cout << "bad version" << std::endl;
+        error_code ec;
+        client_endpoint.send(m_hdl, msg, websocketpp::frame::opcode::text, ec);
+        return ec;
+    }
+
+    virtual void close(std::string const & status) {
+        client_endpoint.close(m_hdl, websocketpp::close::status::normal, status);
+    }
+    virtual void fail(std::string const & status) {
+        std::cerr << "Connection failed " << status;
+    }
+
+    void telemetry_loop () {
         std::cout << "telemetry_loop";
         std::stringstream val;
-        websocketpp::lib::error_code ec;
+        error_code ec;
         
         boost::poisson_distribution<int> pdist(m_interval);
         rng_type rng(gen, pdist);
@@ -165,7 +181,7 @@ public:
                 sleep(m_interval);
             else {
                 int sleep_interval = rng();
-                // std::cout << "Sleeping for " << sleep_interval << "s" << std::endl;
+                std::cout << "Sleeping for " << sleep_interval << "s" << std::endl;
                 sleep(sleep_interval);
             }
             bool wait = false;
@@ -183,6 +199,7 @@ public:
             }
 
             if (wait) {
+                std::cout << "connection not ready for sending" << std::endl;
                 sleep(1);
                 continue;
             }
@@ -197,10 +214,11 @@ public:
 
             {
                 // client_endpoint.get_alog().write(websocketpp::log::alevel::app, val.str());
+                std::cout << "Try sending " << val.str() << std::endl;
                 scoped_lock guard(m_lock);
                 m_message_pending = true;
                 m_start = std::chrono::high_resolution_clock::now();
-                client_endpoint.send(m_hdl,val.str(),websocketpp::frame::opcode::text,ec);
+                ec = send_message(val.str());
             }
 
             // The most likely error that we will get is that the connection is
@@ -209,8 +227,7 @@ public:
             // closing. While many errors here can be easily recovered from,
             // in this simple example, we'll stop the telemetry loop.
             if (ec) {
-                client_endpoint.get_alog().write(websocketpp::log::alevel::app,
-                    "Send Error: "+ec.message());
+                std::cerr << "Send Error: "+ec.message() << std::endl;
                 break;
             }
 
@@ -220,8 +237,11 @@ public:
             // Allow for some time to send the message
             sleep(10);
             std::cout << "Close" << std::endl;
-            client_endpoint.close(m_hdl, websocketpp::close::status::normal, "connection finished");
-            // sleep(10);
+            close("connection finished");
+        } else {
+            sleep(1);
+            std::cout << "Fail" << std::endl;
+            fail("connection failed");
         }
     }
 
@@ -253,6 +273,10 @@ public:
 
 protected:
     client client_endpoint;
+    typedef websocketpp::lib::thread thread_type;
+    typedef websocketpp::lib::shared_ptr<thread_type> thread_ptr;
+    thread_ptr asio_thread, telemetry_thread;
+    std::ofstream m_log;
 
 private:
     typedef boost::variate_generator< boost::mt19937&, boost::poisson_distribution<> > rng_type;
@@ -271,11 +295,6 @@ private:
     boost::mt19937 gen;
 
     accumulator_set<double, stats<tag::count, tag::min, tag::max, tag::mean, tag::variance> > m_stats;
-    std::ofstream m_log;
     std::chrono::time_point<std::chrono::high_resolution_clock> m_start, m_con_start;
-    double m_setupTime;
-
-    typedef websocketpp::lib::thread thread_type;
-    typedef websocketpp::lib::shared_ptr<thread_type> thread_ptr;
-    thread_ptr asio_thread, telemetry_thread;
+    double m_setupTime;    
 };
