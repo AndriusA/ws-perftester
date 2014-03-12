@@ -58,6 +58,7 @@ public:
     {   
         // set up access channels to only log interesting things
         client_endpoint.clear_access_channels(websocketpp::log::alevel::all);
+        client_endpoint.set_access_channels(websocketpp::log::alevel::app);
         // Initialize the Asio transport policy
         client_endpoint.init_asio();
 
@@ -91,7 +92,7 @@ public:
                     "Get Connection Error: "+ec.message());
             return;
         }
-        boost::random::uniform_int_distribution<> dist(0,7);
+        boost::random::uniform_int_distribution<> dist(0,15);
         int delay = dist(gen);
         m_hdl = con->get_handle();
         sleep(delay);
@@ -146,13 +147,16 @@ public:
         m_message_pending = false;
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::microseconds elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start);
-        std::cout << "Message echo received in " << elapsed.count() << "microseconds" << std::endl;
+
+        std::stringstream ss;
+        ss << "Message echo received in " << elapsed.count() << "microseconds";
+        client_endpoint.get_alog().write(websocketpp::log::alevel::app, ss.str());
+        
         m_log << "Echo in " << elapsed.count()/1000.0 << "ms" << std::endl;
         m_stats(elapsed.count()/1000.0);
     }
 
     virtual error_code send_message (std::string const & msg) {
-        std::cout << "bad version" << std::endl;
         error_code ec;
         client_endpoint.send(m_hdl, msg, websocketpp::frame::opcode::text, ec);
         return ec;
@@ -166,7 +170,7 @@ public:
     }
 
     void telemetry_loop () {
-        std::cout << "telemetry_loop";
+        std::cout << "telemetry_loop" << std::endl;
         std::stringstream val;
         error_code ec;
         
@@ -181,25 +185,27 @@ public:
                 sleep(m_interval);
             else {
                 int sleep_interval = rng();
-                std::cout << "Sleeping for " << sleep_interval << "s" << std::endl;
+                client_endpoint.get_alog().write(websocketpp::log::alevel::app, 
+                    "Sleeping for " + std::to_string(sleep_interval) + "s"
+                );
                 sleep(sleep_interval);
             }
+
             bool wait = false;
-
             {
-
                 scoped_lock guard(m_lock);
                 // If the connection has been closed, stop generating telemetry
-                if (m_done) {break;}
-
+                if (m_done) { 
+                    client_endpoint.get_alog().write(websocketpp::log::alevel::app, "Connection done, breaking");
+                    break; 
+                }
                 // If the connection hasn't been opened yet wait a bit and retry
                 if (!m_open || m_message_pending) {
                     wait = true;
                 }
             }
-
             if (wait) {
-                std::cout << "connection not ready for sending" << std::endl;
+                client_endpoint.get_alog().write(websocketpp::log::alevel::app, "connection not ready for sending");
                 sleep(1);
                 continue;
             }
@@ -214,7 +220,7 @@ public:
 
             {
                 // client_endpoint.get_alog().write(websocketpp::log::alevel::app, val.str());
-                std::cout << "Try sending " << val.str() << std::endl;
+                // std::cout << "Try sending " << val.str() << std::endl;
                 scoped_lock guard(m_lock);
                 m_message_pending = true;
                 m_start = std::chrono::high_resolution_clock::now();
@@ -227,8 +233,9 @@ public:
             // closing. While many errors here can be easily recovered from,
             // in this simple example, we'll stop the telemetry loop.
             if (ec) {
-                std::cerr << "Send Error: "+ec.message() << std::endl;
-                break;
+                client_endpoint.get_elog().write(websocketpp::log::elevel::warn, "Send Error: " + ec.message());
+                m_message_pending = false;
+                // break;
             }
 
             
@@ -236,11 +243,11 @@ public:
         if (m_count == m_total_messages) {
             // Allow for some time to send the message
             sleep(10);
-            std::cout << "Close" << std::endl;
+            client_endpoint.get_alog().write(websocketpp::log::alevel::app, "Close");
             close("connection finished");
         } else {
             sleep(1);
-            std::cout << "Fail" << std::endl;
+            client_endpoint.get_elog().write(websocketpp::log::elevel::fatal, "Fail");
             fail("connection failed");
         }
     }
