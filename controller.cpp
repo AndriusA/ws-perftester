@@ -13,12 +13,12 @@ class config {
 public:
     config () {
         machines = 1;
-        processes = 1;
+        processes = 100;
         instances = 75;
         send_messages = true;           // Send messages once connection is established or only connect
         randomized_interval = true;     // Send messages at a randomized interval or exactly every t seconds
-        interval = 300;                  // Mean interval
-        messages = 2;                   
+        interval = 60;                  // Mean interval
+        messages = 12;                   
         message_length = 240;           // Message payload length in bytes (random payload)
         bwBytes = 4000000;
     }
@@ -67,7 +67,7 @@ int main () {
         conf[i].machines = i+1; 
     }
     
-    for (int iteration = 0; iteration < 1; iteration = iteration+2) {
+    for (int iteration = 16; iteration < 17; iteration = iteration+2) {
         //  Get synchronization from subscribers
         int subscribers = 0;
         std::cout << "Syncing slaves" << std::endl;   
@@ -127,7 +127,7 @@ int main () {
         s_sendmore(publisher, "StartWebsockets");
         // s_sendmore(publisher, "ws://192.95.61.160:9002");
         // s_sendmore(publisher, "ws://localhost:9002");
-        s_sendmore(publisher, "wss://ec2-54-82-55-179.compute-1.amazonaws.com:9002");
+        s_sendmore(publisher, "wss://54.84.134.93:9002");
         // s_sendmore(publisher, "wss://echo.websocket.org");
         s_sendmore(publisher, std::to_string(conf[iteration].instances));
         s_sendmore(publisher, std::to_string(conf[iteration].send_messages));
@@ -172,12 +172,7 @@ int main () {
                 double min, max, mean, variance, setup;
                 std::string type;
                 ss >> type;
-                if (type != "success") {
-                    ++connectionsDied;
-                    // std::cout << stats << std::endl;
-                } else {
-                    ++connectionsSucceeded;
-                }
+                
                 ss >> count;
                 ss >> min;
                 ss >> max;
@@ -185,7 +180,16 @@ int main () {
                 ss >> variance;
                 ss >> setup;
                 setup_stats(setup);
-                    
+                if (type != "success") {
+                    ++connectionsDied;
+                    // std::cout << stats << std::endl;
+                } else {
+                    if (count == conf[iteration].messages)
+                        ++connectionsSucceeded;
+                    else
+                        ++connectionsDied;
+                }
+
                 if (count > 0) {
                     meansum += mean*count;
                     totalcount += count;
